@@ -242,6 +242,11 @@ func uploadImageAndThumbailToCloudStorage(file multipart.File, item models.Groce
 	// Set the image URL
 	imageURL := "https://storage.googleapis.com/" + bucketName + "/" + imageFileName
 
+	// Reset the file pointer for generating the thumbnail
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return "", "", err
+	}
+
 	// Generate thumbnail
 	thumbnail, err := generateThumbnail(file)
 	if err != nil {
@@ -283,11 +288,12 @@ func generateThumbnail(file io.Reader) (image.Image, error) {
 	log.Println("After decoding the image")
 
 	// Resize the image to create a thumbnail
-	thumbnail := resize.Thumbnail(50, 50, img, resize.Lanczos3)
+	thumbnail := resize.Thumbnail(100, 100, img, resize.Lanczos3)
 	if thumbnail == nil {
 		log.Println("Generated thumbnail is nil")
 		return nil, fmt.Errorf("generated thumbnail is nil")
 	}
 
+	log.Println("Image resized, Thumbnail will be returned")
 	return thumbnail, nil
 }
