@@ -4,7 +4,10 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 
+	"cloud.google.com/go/firestore"
 	"example.com/capstone/models"
 	"example.com/capstone/utils"
 	"google.golang.org/api/iterator"
@@ -22,11 +25,6 @@ func ListItemsBY(w http.ResponseWriter, r *http.Request) {
 
 	utils.InitLogger()
 
-	// Parse query parameters for filters
-	productNameFilter := r.URL.Query().Get("productName")
-	// categoryFilter := r.URL.Query().Get("category")
-	// priceFilter := r.URL.Query().Get("price")
-
 	// Create a Firestore client
 	client, err := utils.CreateFirestoreClient()
 	if err != nil {
@@ -38,7 +36,49 @@ func ListItemsBY(w http.ResponseWriter, r *http.Request) {
 
 	log.Print("Firestore client created")
 
-	query := client.Collection("groceryItems").Where("ProductName", "==", productNameFilter)
+	collectionRef := client.Collection("groceryItems")
+	var query firestore.Query
+
+	i := 0
+
+	for k := range r.URL.Query() {
+		v := r.URL.Query().Get(k)
+
+		// Handle value inequality and range comparisons
+		if strings.HasPrefix(k, "price") {
+			// Convert the value to a float64 for numerical comparison
+			price, err := strconv.ParseFloat(v, 64)
+			if err != nil {
+				log.Printf("Invalid price value: %s", v)
+				continue
+			}
+
+			if strings.HasSuffix(k, "_min") {
+				query = collectionRef.Where("Price", "<=", price)
+			} else if strings.HasSuffix(k, "_max") {
+				query = collectionRef.Where("Price", ">=", price)
+			} else {
+				query = collectionRef.Where("Price", "==", price)
+			}
+
+		} else {
+			if i == 0 {
+				log.Printf("Query parameter: %s=%s\n", k, v)
+				query = collectionRef.Where(k, "==", v)
+
+			} else {
+				query = query.Where(k, "==", v)
+			}
+
+			i++
+
+		}
+
+	}
+
+	// try to add "productname" containing baby care oil not exact name - but keyword
+
+	log.Printf("Request Parameters: %v", r.URL.Query())
 
 	// Execute the query
 	iter := query.Documents(context.Background())
