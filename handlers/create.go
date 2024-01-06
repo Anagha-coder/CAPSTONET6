@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
+	"strings"
 
 	"image/jpeg"
 	"io"
@@ -223,9 +224,12 @@ func uploadImageAndThumbailToCloudStorage(file multipart.File, item models.Groce
 
 	bucketName := "cloud-storage-bucket-by-anagha"
 
+	// Replace spaces with underscores in the product name
+	productNameWithoutSpaces := strings.ReplaceAll(item.ProductName, " ", "_")
+
 	// Create a unique filename for the image based on the product name and weight
 	// Use a suitable format for the weight, e.g., convert to string or format it as needed
-	imageFileName := "images/" + item.ProductName + "_" + strconv.FormatFloat(item.Weight, 'f', -1, 64) + ".jpg"
+	imageFileName := "images/" + productNameWithoutSpaces + "_" + strconv.FormatFloat(item.Weight, 'f', -1, 64) + ".jpg"
 
 	// Create a new GCP Storage object handle
 	imageObj := client.Bucket(bucketName).Object(imageFileName)
@@ -255,7 +259,7 @@ func uploadImageAndThumbailToCloudStorage(file multipart.File, item models.Groce
 	}
 
 	// Create a unique filename for the thumbnail
-	thumbnailFileName := "thumbnails/" + item.ProductName + "_" + strconv.FormatFloat(item.Weight, 'f', -1, 64) + "_thumbnail.jpg"
+	thumbnailFileName := "thumbnails/" + productNameWithoutSpaces + "_" + strconv.FormatFloat(item.Weight, 'f', -1, 64) + "_thumbnail.jpg"
 
 	// Create a new GCP Storage object handle for the thumbnail
 	thumbnailObj := client.Bucket(bucketName).Object(thumbnailFileName)
