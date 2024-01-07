@@ -3,8 +3,10 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -66,6 +68,13 @@ func UpdateGroceryItem(w http.ResponseWriter, r *http.Request) {
 	if err := json.Unmarshal([]byte(jsonData), &updatedGroceryItem); err != nil {
 		log.Println("Failed to unmarshal JSON:", err)
 		respondWithError(w, http.StatusBadRequest, "Invalid JSON payload")
+		return
+	}
+
+	// Validate required fields
+	if err := validateRequiredFields(updatedGroceryItem); err != nil {
+		log.Println("Missing required fields:", err)
+		respondWithError(w, http.StatusBadRequest, "Missing required fields: "+err.Error())
 		return
 	}
 
@@ -163,62 +172,18 @@ func UpdateGroceryItem(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, map[string]string{"message": "Grocery item updated successfully"})
 	log.Print("Response Sent: UpdateGroceryItem")
 
-	// // Unmarshal the JSON data into a map
-	// var updatedData map[string]interface{}
-	// if err := json.Unmarshal([]byte(jsonData), &updatedData); err != nil {
-	// 	log.Println("Failed to unmarshal JSON:", err)
-	// 	respondWithError(w, http.StatusBadRequest, "Invalid JSON payload")
-	// 	return
-	// }
-
-	// // Validate dynamic fields against existing fields in GroceryItem struct
-	// if err := validateDynamicFields(updatedGroceryItem, jsonData); err != nil {
-	// 	log.Println("Validation error:", err)
-	// 	respondWithError(w, http.StatusBadRequest, err.Error())
-	// 	return
-	// }
-
-	// Convert updatedGroceryItem to a map
-	// existingData, err := convertStructToMap(updatedGroceryItem)
-	// if err != nil {
-	// 	log.Println("Failed to convert struct to map:", err)
-	// 	respondWithError(w, http.StatusInternalServerError, "Failed to update grocery item in Firestore")
-	// 	return
-	// }
-
-	// // Merge existingData with updatedData
-	// for key, value := range updatedData {
-	// 	existingData[key] = value
-	// }
-
-	// Perform the update with merged data
-	// _, err = docRef.Set(context.Background(), existingData, firestore.MergeAll)
-	// if err != nil {
-	// 	log.Print("Failed to update grocery item in Firestore:", err)
-	// 	respondWithError(w, http.StatusInternalServerError, "Failed to update grocery item in Firestore")
-	// 	return
-	// }
-
-	// respondWithJSON(w, http.StatusOK, map[string]string{"message": "Grocery item updated successfully"})
-	// log.Print("Response Sent: UpdateGroceryItem")
-
 }
 
-// Function to convert struct to map
-// func convertStructToMap(inputStruct interface{}) (map[string]interface{}, error) {
-// 	var result map[string]interface{}
+func validateRequiredFields(item models.GroceryItem) error {
+	// Check for the presence of required fields
+	requiredFields := []string{"ProductName", "Category", "Price", "Weight", "WeightUnit", "Manufacturer", "Brand", "ItemPackageQuantity", "PackageInformation", "MfgDate", "ExpDate", "CountryOfOrigin"}
 
-// 	// Convert the struct to JSON
-// 	jsonData, err := json.Marshal(inputStruct)
-// 	if err != nil {
-// 		return nil, err
-// 	}
+	for _, field := range requiredFields {
+		value := reflect.ValueOf(item).FieldByName(field)
+		if value.Interface() == reflect.Zero(value.Type()).Interface() {
+			return fmt.Errorf("field '%s' is required", field)
+		}
+	}
 
-// 	// Unmarshal the JSON into a map
-// 	err = json.Unmarshal(jsonData, &result)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	return result, nil
-// }
+	return nil
+}
