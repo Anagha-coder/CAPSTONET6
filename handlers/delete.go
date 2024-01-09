@@ -12,6 +12,16 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// @Summary Delete a grocery item by ID
+// @Description Deletes a grocery item from the data source based on the provided ID
+// @ID delete-grocery-item-by-id
+// @Produce json
+// @Param id path integer true "Grocery item ID to be deleted"
+// @Success 200 {string} string "Item deleted successfully"
+// @Failure 400 {string} string  "Invalid ID format or other client error"
+// @Failure 404 {string} string "Item not found"
+// @Failure 500 {string} string "Internal server error"
+// @Router /deleteItem/{id} [delete]
 func DeleteItemByID(w http.ResponseWriter, r *http.Request) {
 	// Handle CORS preflight request
 	if r.Method == http.MethodOptions {
@@ -88,24 +98,19 @@ func DeleteItemByID(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, map[string]string{"message": "Item deleted successfully"})
 	log.Print("Response Sent")
 
+	// Generate audit record for update
+	auditRecord := GenerateAuditRecord("delete", strconv.Itoa(id))
+
+	// Print audit record to log
+	log.Printf("Audit Record: %+v", auditRecord)
+
+	// Publish audit record to Pub/Sub topic
+	some_err := PublishAuditRecord(auditRecord)
+	if some_err != nil {
+		// Handle error if needed
+		log.Println("Failed to publish audit record:", err)
+		respondWithError(w, http.StatusInternalServerError, "Failed to publish audit record")
+		return
+	}
+
 }
-
-// func respondWithError(w http.ResponseWriter, code int, message string) {
-// 	respondWithJSON(w, code, map[string]string{"error": message})
-// }
-
-// func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
-// 	response, err := json.Marshal(payload)
-// 	if err != nil {
-// 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	w.Header().Set("Access-Control-Allow-Origin", "*")
-// 	w.Header().Set("Access-Control-Allow-Methods", "POST")
-// 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-// 	w.Header().Set("Content-Type", "application/json")
-// 	w.WriteHeader(code)
-// 	w.Write(response)
-// }

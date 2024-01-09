@@ -169,6 +169,21 @@ func UpdateGroceryItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Generate audit record for update
+	auditRecord := GenerateAuditRecord("update", strconv.Itoa(id))
+
+	// Print audit record to log
+	log.Printf("Audit Record: %+v", auditRecord)
+
+	// Publish audit record to Pub/Sub topic
+	some_err := PublishAuditRecord(auditRecord)
+	if some_err != nil {
+		// Handle error if needed
+		log.Println("Failed to publish audit record:", err)
+		respondWithError(w, http.StatusInternalServerError, "Failed to publish audit record")
+		return
+	}
+
 	respondWithJSON(w, http.StatusOK, map[string]string{"message": "Grocery item updated successfully"})
 	log.Print("Response Sent: UpdateGroceryItem")
 
