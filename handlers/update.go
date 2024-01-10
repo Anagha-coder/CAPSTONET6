@@ -3,15 +3,17 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+
 	"fmt"
 	"log"
 	"net/http"
-	"reflect"
+
+	// "reflect"
 	"strconv"
 	"strings"
 	"time"
 
-	"example.com/capstone/models"
+	// "example.com/capstone/models"
 	"example.com/capstone/utils"
 	"google.golang.org/api/iterator"
 )
@@ -64,7 +66,7 @@ func UpdateGroceryItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// schema reference based on that to create new item
-	var updatedGroceryItem models.GroceryItem
+	var updatedGroceryItem map[string]interface{}
 	if err := json.Unmarshal([]byte(jsonData), &updatedGroceryItem); err != nil {
 		log.Println("Failed to unmarshal JSON:", err)
 		respondWithError(w, http.StatusBadRequest, "Invalid JSON payload")
@@ -97,7 +99,7 @@ func UpdateGroceryItem(w http.ResponseWriter, r *http.Request) {
 		// a goroutine to handle image upload asynchronously
 		go func() {
 			// Upload the image to the Cloud Storage bucket
-			imageURL, thumbnailURL, err := uploadImageAndThumbailToCloudStorage(file, updatedGroceryItem)
+			imageURL, thumbnailURL, err := ImageAndThumbnailUploadFunc(file, updatedGroceryItem)
 			if err != nil {
 				log.Println("failed to upload thumbnail to cloud storage:", err)
 				// Handle error if needed
@@ -106,8 +108,8 @@ func UpdateGroceryItem(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Set the image URL in the grocery item
-			updatedGroceryItem.Image = imageURL
-			updatedGroceryItem.Thumbnail = thumbnailURL
+			updatedGroceryItem["Image"] = imageURL
+			updatedGroceryItem["Thumbnail"] = thumbnailURL
 
 			// Signal that the image upload is complete
 			imageUploadDone <- true
@@ -152,7 +154,7 @@ func UpdateGroceryItem(w http.ResponseWriter, r *http.Request) {
 	docRef := client.Collection("groceryItems").Doc(doc.Ref.ID)
 
 	// Set the existing ID to updatedGroceryItem
-	updatedGroceryItem.ID = id
+	updatedGroceryItem["ID"] = id
 
 	// Unmarshal the JSON data into the existing grocery item
 	if err := json.Unmarshal([]byte(jsonData), &updatedGroceryItem); err != nil {
@@ -189,16 +191,35 @@ func UpdateGroceryItem(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func validateRequiredFields(item models.GroceryItem) error {
+func validateRequiredFields(item map[string]interface{}) error {
 	// Check for the presence of required fields
-	requiredFields := []string{"ProductName", "Category", "Price", "Weight", "WeightUnit", "Manufacturer", "Brand", "ItemPackageQuantity", "PackageInformation", "MfgDate", "ExpDate", "CountryOfOrigin"}
+	requiredFields := []string{"productName", "category", "price", "weight", "weightUnit", "manufacturer", "brand", "itemPackageQuantity", "packageInformation", "mfgDate", "expDate", "countryOfOrigin"}
 
 	for _, field := range requiredFields {
-		value := reflect.ValueOf(item).FieldByName(field)
-		if value.Interface() == reflect.Zero(value.Type()).Interface() {
+		if value, ok := item[field]; !ok || isEmpty(value) {
 			return fmt.Errorf("field '%s' is required", field)
 		}
 	}
 
 	return nil
+}
+
+// Function to check if a value is considered empty
+func isEmpty(value interface{}) bool {
+	switch v := value.(type) {
+	case string:
+		return v == ""
+	case int, int8, int16, int32, int64:
+		return v == 0
+	case uint, uint8, uint16, uint32, uint64:
+		return v == 0
+	case float32, float64:
+		return v == 0.0
+	case bool:
+		return !v
+	case nil:
+		return true
+	default:
+		return false
+	}
 }
