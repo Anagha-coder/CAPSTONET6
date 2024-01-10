@@ -8,12 +8,10 @@ import (
 	"log"
 	"net/http"
 
-	// "reflect"
 	"strconv"
 	"strings"
 	"time"
 
-	// "example.com/capstone/models"
 	"example.com/capstone/utils"
 	"google.golang.org/api/iterator"
 )
@@ -135,7 +133,7 @@ func UpdateGroceryItem(w http.ResponseWriter, r *http.Request) {
 	}
 	defer client.Close()
 
-	// Query Firestore to check if the item with the given ID exists
+	// query firestore to check if the item with the given ID exists
 	query := client.Collection("groceryItems").Where("ID", "==", id).Limit(1)
 	iter := query.Documents(context.Background())
 	doc, err := iter.Next()
@@ -150,7 +148,6 @@ func UpdateGroceryItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Perform the update with merged data
 	docRef := client.Collection("groceryItems").Doc(doc.Ref.ID)
 
 	// Set the existing ID to updatedGroceryItem
@@ -180,7 +177,7 @@ func UpdateGroceryItem(w http.ResponseWriter, r *http.Request) {
 	// Publish audit record to Pub/Sub topic
 	some_err := PublishAuditRecord(auditRecord)
 	if some_err != nil {
-		// Handle error if needed
+
 		log.Println("Failed to publish audit record:", err)
 		respondWithError(w, http.StatusInternalServerError, "Failed to publish audit record")
 		return
@@ -192,7 +189,7 @@ func UpdateGroceryItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func validateRequiredFields(item map[string]interface{}) error {
-	// Check for the presence of required fields
+	// Check required fields
 	requiredFields := []string{"productName", "category", "price", "weight", "weightUnit", "manufacturer", "brand", "itemPackageQuantity", "packageInformation", "mfgDate", "expDate", "countryOfOrigin"}
 
 	for _, field := range requiredFields {
@@ -204,7 +201,7 @@ func validateRequiredFields(item map[string]interface{}) error {
 	return nil
 }
 
-// Function to check if a value is considered empty
+// function to check if a value is considered empty
 func isEmpty(value interface{}) bool {
 	switch v := value.(type) {
 	case string:
