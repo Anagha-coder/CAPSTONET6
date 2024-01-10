@@ -90,11 +90,11 @@ func CreateGroceryItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the image file from the form data
+	// image file from the form data
 	file, _, err := r.FormFile("image")
 	// log.Printf("Original image format: %s", formatimg)
 	if err == http.ErrMissingFile {
-		// no image provided, proceed without image
+		// if no image provided, proceed without image
 		log.Println("No image file")
 	} else if err != nil {
 		log.Println("Failed to get image file:", err)
@@ -102,6 +102,23 @@ func CreateGroceryItem(w http.ResponseWriter, r *http.Request) {
 		return
 	} else {
 		defer file.Close()
+
+		// Read the first 512 bytes to detect the content type
+		buffer := make([]byte, 512)
+		_, err := file.Read(buffer)
+		if err != nil {
+			log.Println("Failed to read file content:", err)
+			respondWithError(w, http.StatusBadRequest, "Failed to read file content")
+			return
+		}
+
+		// Check if the content type is image based on the detected content
+		contentType := http.DetectContentType(buffer)
+		if !strings.HasPrefix(contentType, "image/") {
+			log.Println("Invalid file type. Only images are allowed.")
+			respondWithError(w, http.StatusBadRequest, "Invalid file type. Only images are allowed.")
+			return
+		}
 
 		// Use a channel to signal when the image upload is complete
 		imageUploadDone := make(chan bool)
@@ -129,9 +146,9 @@ func CreateGroceryItem(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-imageUploadDone:
 			log.Println("Image uploaded!")
-		case <-time.After(30 * time.Second): // Set a timeout if needed
+		case <-time.After(30 * time.Second):
 			log.Println("Image upload timed out")
-			// Handle timeout if needed
+
 		}
 
 	}
@@ -147,7 +164,7 @@ func CreateGroceryItem(w http.ResponseWriter, r *http.Request) {
 
 	log.Print("Firestore client created")
 
-	// Read existing grocery items from Firestore (assuming collection named "groceryItems")
+	// Read existing grocery items from Firestore - collection : "groceryItems"
 	iter := client.Collection("groceryItems").Documents(context.Background())
 	var existingGroceryItems []models.GroceryItem
 	for {
@@ -171,17 +188,17 @@ func CreateGroceryItem(w http.ResponseWriter, r *http.Request) {
 
 	log.Print("Existing grocery items read from Firestore")
 
-	// Generate a unique ID for the new grocery item
+	// a unique ID for the new grocery item
 	newItemID := generateUniqueGroceryItemID(existingGroceryItems)
 
 	// Set the new grocery item ID
 	groceryItem.ID = newItemID
 
 	// Set the Firestore document ID to the product name
-	docRef := client.Collection("groceryItems").Doc(groceryItem.ProductName)
+	// docRef := client.Collection("groceryItems").Doc(groceryItem.ProductName)
 
-	// Add the new grocery item to Firestore with the specified document ID
-	_, err = docRef.Set(context.Background(), groceryItem)
+	// Add the new grocery item to Firestore
+	_, _, err = client.Collection("groceryItems").Add(context.Background(), groceryItem)
 	if err != nil {
 		log.Print("Failed to create grocery item in Firestore:", err)
 		respondWithError(w, http.StatusInternalServerError, "Failed to create grocery item in Firestore")
