@@ -1,0 +1,426 @@
+definitions:
+  handlers.ErrorResponse:
+    properties:
+      code:
+        type: integer
+      message:
+        type: string
+    type: object
+  handlers.GroceryItem:
+    properties:
+      brand:
+        type: string
+      category:
+        type: string
+      countryOfOrigin:
+        type: string
+      expDate:
+        properties:
+          month:
+            type: integer
+          year:
+            type: integer
+        type: object
+      itemPackageQuantity:
+        type: integer
+      manufacturer:
+        type: string
+      mfgDate:
+        properties:
+          month:
+            type: integer
+          year:
+            type: integer
+        type: object
+      packageInformation:
+        type: string
+      price:
+        type: number
+      productName:
+        type: string
+      vegetarian:
+        type: boolean
+      weight:
+        type: number
+      weightUnit:
+        type: string
+    type: object
+  models.ErrorResponse:
+    properties:
+      code:
+        type: integer
+      message:
+        type: string
+    type: object
+  models.LoginUser:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    type: object
+  models.User:
+    properties:
+      email:
+        type: string
+      name:
+        type: string
+      password:
+        description: not string hashed password
+        type: string
+      role:
+        description: Role ? Admin OR manager - one role for now - admin
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: Your ultimate destination for all things fresh, flavorful, and fabulous
+    – where convenience meets quality in our one-stop grocery wonderland!
+  title: "One Stop Grocery\U0001F6D2"
+  version: "1.0"
+paths:
+  /bulkupload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Uploads a file containing grocery items in CSV or JSON format to
+        the server, which then processes and stores the items
+      operationId: bulk-upload
+      parameters:
+      - description: File containing grocery items (CSV or JSON)
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: File Uploaded to Cloud Storage
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request format" or "Failed to parse multipart form"
+            or "Failed to determine file type" or "Failed to get file
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Failed to create Storage client" or "Failed to upload file
+            to cloud storage
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Upload a file with grocery items
+  /createGroceryItem:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new grocery item and uploads its image to your database.
+        Image is optional, you can add it later by using update method as well. Do
+        provide 'Bearer' before adding authorization token
+      operationId: create-grocery-item
+      parameters:
+      - description: token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: JSON data for the grocery item
+        format: json
+        in: formData
+        name: json-data
+        required: true
+        type: string
+      - description: 'Optional: Image file for the grocery item'
+        in: formData
+        name: image
+        type: file
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Grocery item created successfully
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Create a new grocery item
+  /deleteGroceryItemByID/{id}:
+    delete:
+      description: Deletes a grocery item from your database based on the provided
+        ID. Do provide 'Bearer' before adding authorization token
+      operationId: delete-grocery-item-by-id
+      parameters:
+      - description: token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Grocery item ID to be deleted
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Grocery item deleted successfully
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerToken: []
+      summary: Delete a grocery item by ID
+  /fetchGroceryItemByID/{id}:
+    get:
+      description: Fetches a grocery item from the Firestore database based on the
+        provided ID.
+      operationId: fetch-item-by-id
+      parameters:
+      - description: ID of the grocery item
+        format: int64
+        in: path
+        minimum: 1
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Grocery item fetched successfully
+          schema:
+            $ref: '#/definitions/handlers.GroceryItem'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Fetch a grocery item by ID
+  /listGroceryItems:
+    get:
+      description: Retrieves a list of grocery items from the Firestore database based
+        on the provided query parameters.
+      operationId: list-items-by
+      parameters:
+      - description: Filter by product name
+        in: query
+        name: productName
+        type: string
+      - description: Filter by price
+        in: query
+        name: price
+        type: number
+      - description: Filter by minimum price
+        in: query
+        name: price_min
+        type: number
+      - description: Filter by maximum price
+        in: query
+        name: price_max
+        type: number
+      - description: Filter by category
+        in: query
+        name: Category
+        type: string
+      - description: Number of items per page
+        format: int32
+        in: query
+        name: pageSize
+        type: integer
+      - description: Page number
+        format: int32
+        in: query
+        name: pageNumber
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: List Of Grocery Items
+          schema:
+            type: Object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: List grocery items based on query parameters
+  /updateGroceryItemByID/{id}:
+    put:
+      consumes:
+      - application/json
+      description: Updates an existing grocery item with the provided information
+        and uploads a new image if provided. Do provide 'Bearer' before adding authorization
+        token
+      operationId: update-grocery-item
+      parameters:
+      - description: token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: ID of the grocery item to be updated
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: JSON data for the updated grocery item
+        format: json
+        in: formData
+        name: json-data
+        required: true
+        type: string
+      - description: 'Optional: New image file for the updated grocery item'
+        in: formData
+        name: image
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Grocery item updated successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request format" or "Missing fields in the request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token not provided" or "Invalid token
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Grocery item not found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Failed to update grocery item in Firestore" or "Failed to publish
+            audit record
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerToken: []
+      summary: Update an existing grocery item
+  /userLogin:
+    post:
+      consumes:
+      - application/json
+      description: Authenticates a user with the provided email and password, returning
+        a JWT token upon success
+      operationId: login-user
+      parameters:
+      - description: Login credentials (email and password)
+        in: body
+        name: loginCredentials
+        required: true
+        schema:
+          $ref: '#/definitions/models.LoginUser'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request format
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Invalid email or password
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Failed to generate token
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Log in a user
+  /users:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new user with the provided information
+      operationId: create-new-user
+      parameters:
+      - description: User object to be created
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/models.User'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: User Created Successfully. userID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request format" or "Missing fields in the request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal Server Error" or "Failed to create user in Firestore
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Create a new user
+schemes:
+- http
+swagger: "2.0"
