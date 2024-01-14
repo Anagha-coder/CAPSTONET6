@@ -13,6 +13,24 @@ import (
 	"google.golang.org/api/iterator"
 )
 
+// ListItemsBY lists grocery items based on query parameters.
+// @Summary List grocery items based on query parameters
+// @Description Retrieves a list of grocery items from the Firestore database based on the provided query parameters.
+// @ID list-items-by
+// @Produce json
+// @Param productName query string false "Filter by product name"
+// @Param price query number false "Filter by price"
+// @Param price_min query number false "Filter by minimum price"
+// @Param price_max query number false "Filter by maximum price"
+// @Param Category query string false "Filter by category"
+// @Param pageSize query integer false "Number of items per page" format(int32)
+// @Param pageNumber query integer false "Page number" format(int32)
+// @Success 201 {Object} string "List Of Grocery Items"
+// @Failure 400 {object} ErrorResponse "Bad Request"
+// @Failure 401 {object} ErrorResponse "Unauthorized"
+// @Failure 404 {object} ErrorResponse "Not Found"
+// @Failure 500 {object} ErrorResponse "Internal Server Error"
+// @Router /listGroceryItems [get]
 func ListItemsBY(w http.ResponseWriter, r *http.Request) {
 	// handle preflight CORS
 	if r.Method == http.MethodOptions {
@@ -42,8 +60,11 @@ func ListItemsBY(w http.ResponseWriter, r *http.Request) {
 	i := 0
 
 	for k := range r.URL.Query() {
-		v := r.URL.Query().Get(k)
 
+		if k == "pageSize" || k == "pageNumber" {
+			continue
+		}
+		v := r.URL.Query().Get(k)
 		// Handle value inequality and range comparisons
 		if strings.HasPrefix(k, "price") {
 			// Convert the value to a float64 for numerical comparison
@@ -75,6 +96,40 @@ func ListItemsBY(w http.ResponseWriter, r *http.Request) {
 		}
 
 	}
+
+	// Calculate pagination parameters
+	pageSizeStr := r.URL.Query().Get("pageSize")
+	pageNumberStr := r.URL.Query().Get("pageNumber")
+
+	var pageSize, pageNumber int
+
+	if pageSizeStr != "" {
+		pageSize, err = strconv.Atoi(pageSizeStr)
+		if err != nil {
+			log.Printf("Error parsing pageSize: %v", err)
+		}
+	} else {
+		// default page size
+		pageSize = 10
+	}
+
+	if pageNumberStr != "" {
+		pageNumber, err = strconv.Atoi(pageNumberStr)
+		if err != nil {
+			log.Printf("Error parsing pageNumber: %v", err)
+		}
+	} else {
+		// default page no
+		pageNumber = 1
+	}
+
+	// Calculate the start index for pagination
+	startIndex := (pageNumber - 1) * pageSize
+
+	log.Printf("pageSize: %d, pageNumber: %d, startIndex: %d", pageSize, pageNumber, startIndex)
+
+	// Add pagination to the query
+	query = query.Offset(0).Limit(pageSize)
 
 	// try to add "productname" containing baby care oil not exact name - but keyword
 

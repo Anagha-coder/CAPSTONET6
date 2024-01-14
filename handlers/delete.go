@@ -8,20 +8,25 @@ import (
 	"strings"
 
 	"example.com/capstone/utils"
+	"github.com/dgrijalva/jwt-go"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 // @Summary Delete a grocery item by ID
-// @Description Deletes a grocery item from the data source based on the provided ID
+// @Description Deletes a grocery item from your database based on the provided ID. Do provide 'Bearer' before adding authorization token
+// @ID create-grocery-item
 // @ID delete-grocery-item-by-id
 // @Produce json
+// @Param Authorization header string true "token"
 // @Param id path integer true "Grocery item ID to be deleted"
-// @Success 200 {string} string "Item deleted successfully"
-// @Failure 400 {string} string  "Invalid ID format or other client error"
-// @Failure 404 {string} string "Item not found"
-// @Failure 500 {string} string "Internal server error"
-// @Router /deleteItem/{id} [delete]
+// @Success 201 {string} string "Grocery item deleted successfully"
+// @Failure 400 {object} ErrorResponse "Bad Request"
+// @Failure 401 {object} ErrorResponse "Unauthorized"
+// @Failure 404 {object} ErrorResponse "Not Found"
+// @Failure 500 {object} ErrorResponse "Internal Server Error"
+// @Router /deleteGroceryItemByID/{id} [delete]
+// @Security BearerToken
 func DeleteItemByID(w http.ResponseWriter, r *http.Request) {
 	// Handle CORS preflight request
 	if r.Method == http.MethodOptions {
@@ -58,6 +63,28 @@ func DeleteItemByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Print("Request received: DeleteItem, ID:", id)
+
+	// Extract the token from the request header
+	tokenString := ExtractToken(r)
+	if tokenString == "" {
+		respondWithError(w, http.StatusUnauthorized, "Token not provided")
+		return
+	}
+
+	// Parse the token
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return []byte(tokenSecret), nil
+	})
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Invalid token")
+		return
+	}
+
+	// Check if the token is valid and not expired
+	if !token.Valid {
+		respondWithError(w, http.StatusUnauthorized, "Invalid token")
+		return
+	}
 
 	client, err := utils.CreateFirestoreClient()
 	if err != nil {

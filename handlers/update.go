@@ -13,9 +13,28 @@ import (
 	"time"
 
 	"example.com/capstone/utils"
+	"github.com/dgrijalva/jwt-go"
 	"google.golang.org/api/iterator"
 )
 
+// UpdateGroceryItem updates an existing grocery item.
+// @Summary Update an existing grocery item
+// @Description Updates an existing grocery item with the provided information and uploads a new image if provided. Do provide 'Bearer' before adding authorization token
+// @ID create-grocery-item
+// @ID update-grocery-item
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "token"
+// @Param id path integer true "ID of the grocery item to be updated"
+// @Param json-data formData string true "JSON data for the updated grocery item" format(json) x-example({"name": "Updated Item", "quantity": 15})
+// @Param image formData file false "Optional: New image file for the updated grocery item"
+// @Success 200 {object} map[string]string "Grocery item updated successfully"
+// @Failure 400 {object} ErrorResponse "Invalid request format" or "Missing fields in the request"
+// @Failure 401 {object} ErrorResponse "Token not provided" or "Invalid token"
+// @Failure 404 {object} ErrorResponse "Grocery item not found"
+// @Failure 500 {object} ErrorResponse "Failed to update grocery item in Firestore" or "Failed to publish audit record"
+// @Router /updateGroceryItemByID/{id} [put]
+// @Security BearerToken
 func UpdateGroceryItem(w http.ResponseWriter, r *http.Request) {
 	// handle preflight CORS
 	if r.Method == http.MethodOptions {
@@ -26,6 +45,29 @@ func UpdateGroceryItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.InitLogger()
+
+	// Extract the token from the request header
+	tokenString := ExtractToken(r)
+	if tokenString == "" {
+		respondWithError(w, http.StatusUnauthorized, "Token not provided")
+		return
+	}
+
+	// Parse the token
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return []byte(tokenSecret), nil
+	})
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Invalid token")
+		return
+	}
+
+	// Check if the token is valid and not expired
+	if !token.Valid {
+		respondWithError(w, http.StatusUnauthorized, "Invalid token")
+		return
+	}
+
 	log.Print("Request is being Processed for Updating exsisting GroceryItem")
 
 	uri := r.RequestURI

@@ -3,19 +3,31 @@ package handlers
 import (
 	"bytes"
 	"context"
-	"encoding/csv"
+
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"mime/multipart"
 	"net/http"
 	"strings"
 
-	"example.com/capstone/models"
+	"cloud.google.com/go/storage"
+
 	"example.com/capstone/utils"
-	"google.golang.org/api/iterator"
 )
 
+// BulkUpload uploads a file containing grocery items in CSV or JSON format.
+// @Summary Upload a file with grocery items
+// @Description Uploads a file containing grocery items in CSV or JSON format to the server, which then processes and stores the items
+// @ID bulk-upload
+// @Accept multipart/form-data
+// @Produce json
+// @Param file formData file true "File containing grocery items (CSV or JSON)"
+// @Success 201 {object} map[string]string "File Uploaded to Cloud Storage"
+// @Failure 400 {object} ErrorResponse "Invalid request format" or "Failed to parse multipart form" or "Failed to determine file type" or "Failed to get file"
+// @Failure 500 {object} ErrorResponse "Failed to create Storage client" or "Failed to upload file to cloud storage"
+// @Router /bulkupload [post]
 func BulkUpload(w http.ResponseWriter, r *http.Request) {
 	// Handle CORS preflight request
 	if r.Method == http.MethodOptions {
@@ -36,7 +48,7 @@ func BulkUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get the file from the form data
-	file, _, err := r.FormFile("file")
+	file, fileHeader, err := r.FormFile("file")
 	if err != nil {
 		log.Println("Failed to get file:", err)
 		respondWithError(w, http.StatusBadRequest, "Failed to get file")
@@ -52,79 +64,53 @@ func BulkUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Read and process the file based on its type
-	var groceryItems []models.GroceryItem
-	switch fileType {
-	case "csv":
-		groceryItems, err = readCSVFile(file)
-	case "json":
-		groceryItems, err = readJSONFile(file)
-	default:
-		respondWithError(w, http.StatusBadRequest, "Unsupported file type")
-		return
-	}
+	// Log the detected file type
+	log.Printf("Detected file type: %v", fileType)
 
+	storageClient, err := utils.CreateStorageClient()
 	if err != nil {
-		log.Println("Failed to process file:", err)
-		respondWithError(w, http.StatusInternalServerError, "Failed to process file")
+		log.Print("Failed to create Storage client:", err)
+		return
+	}
+	defer storageClient.Close()
+
+	// Get the original filename
+	originalFilename := fileHeader.Filename
+
+	// Upload the file to the cloud storage bucket with the original filename
+	cloudStoragePath := "dataFiles/" + originalFilename
+	if err := uploadToCloudStorage(storageClient, cloudStoragePath, file); err != nil {
+		log.Println("Failed to upload file to cloud storage:", err)
+		respondWithError(w, http.StatusInternalServerError, "Failed to upload file to cloud storage")
 		return
 	}
 
-	// Iterate through the grocery items and perform the necessary actions
-	for _, groceryItem := range groceryItems {
-		// Create a Firestore client
-		client, err := utils.CreateFirestoreClient()
-		if err != nil {
-			log.Print("Failed to create Firestore client:", err)
-			// Handle the error if needed
-			continue
-		}
-		defer client.Close()
+	log.Printf("File uploaded successfully to %s", cloudStoragePath)
+	respondWithJSON(w, http.StatusCreated, map[string]string{"message": "File Uploaded to Cloud Storage"})
+	log.Print("Response Sent: CreateBulkGroceryItems")
+}
 
-		// Read existing grocery items from Firestore (assuming collection named "groceryItems")
-		iter := client.Collection("groceryItems").Documents(context.Background())
-		var existingGroceryItems []models.GroceryItem
-		for {
-			doc, err := iter.Next()
-			if err == iterator.Done {
-				break
-			}
-			if err != nil {
-				log.Print("Failed to read grocery item data from Firestore:", err)
-				// Handle the error if needed
-				continue
-			}
-			var item models.GroceryItem
-			if err := doc.DataTo(&item); err != nil {
-				log.Print("Failed to parse grocery item data from Firestore:", err)
-				// Handle the error if needed
-				continue
-			}
-			existingGroceryItems = append(existingGroceryItems, item)
-		}
+// Function to upload the file to cloud storage
+func uploadToCloudStorage(client *storage.Client, cloudStoragePath string, file io.Reader) error {
+	ctx := context.Background()
 
-		// Generate a unique ID for the new grocery item
-		newItemID := generateUniqueGroceryItemID(existingGroceryItems)
+	// Open a bucket handle
+	bucket := client.Bucket("cloudbucketanaghaaaa")
+	obj := bucket.Object(cloudStoragePath)
 
-		// Set the new grocery item ID
-		groceryItem.ID = newItemID
-
-		// Set the Firestore document ID to the product name
-		docRef := client.Collection("groceryItems").Doc(groceryItem.ProductName)
-
-		// Add the new grocery item to Firestore with the specified document ID
-		_, err = docRef.Set(context.Background(), groceryItem)
-		if err != nil {
-			log.Print("Failed to create grocery item in Firestore:", err)
-			// Handle the error if needed
-			continue
-		}
-
-		log.Print("Grocery item created successfully in Firestore")
+	// Create a writer to upload the file
+	wc := obj.NewWriter(ctx)
+	if _, err := io.Copy(wc, file); err != nil {
+		wc.Close()
+		return err
 	}
 
-	respondWithJSON(w, http.StatusCreated, map[string]string{"message": "Bulk grocery items created successfully"})
-	log.Print("Response Sent: CreateBulkGroceryItems")
+	// Close the writer to finalize the upload
+	if err := wc.Close(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func determineFileType(file multipart.File) (string, error) {
@@ -156,46 +142,11 @@ func isCSV(buffer []byte) bool {
 }
 
 func isJSON(buffer []byte) bool {
-	// Check if the file starts with the JSON signature
-	return bytes.HasPrefix(buffer, []byte{'{', '['})
-}
-
-func readCSVFile(file multipart.File) ([]models.GroceryItem, error) {
-	// Create a CSV reader
-	csvReader := csv.NewReader(file)
-
-	// Read all records from the CSV file
-	records, err := csvReader.ReadAll()
+	var js map[string]interface{}
+	err := json.Unmarshal(buffer, &js)
 	if err != nil {
-		return nil, err
+		log.Printf("JSON Unmarshal error: %v", err)
 	}
 
-	// Process CSV records and convert them to GroceryItem objects
-	var groceryItems []models.GroceryItem
-	for _, record := range records {
-		groceryItem := models.GroceryItem{
-			ProductName: record[0],
-			// Category:record[1],
-			// Price:record[2],
-			// Weight:record[3],
-			// WeightUnit: record[4], // Adjust the index based on your CSV structure
-			// Populate other fields accordingly
-		}
-		groceryItems = append(groceryItems, groceryItem)
-	}
-
-	return groceryItems, nil
-}
-
-func readJSONFile(file multipart.File) ([]models.GroceryItem, error) {
-	// Decode the JSON file
-	decoder := json.NewDecoder(file)
-
-	// Decode JSON array into a slice of GroceryItem
-	var groceryItems []models.GroceryItem
-	if err := decoder.Decode(&groceryItems); err != nil {
-		return nil, err
-	}
-
-	return groceryItems, nil
+	return err == nil
 }

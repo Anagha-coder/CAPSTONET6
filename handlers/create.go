@@ -17,45 +17,39 @@ import (
 
 	"example.com/capstone/models"
 	"example.com/capstone/utils"
+
+	"github.com/dgrijalva/jwt-go"
 	"github.com/nfnt/resize"
 	"google.golang.org/api/iterator"
 )
 
-type GroceryItem struct {
-	ID                  int       `json:"id"`
-	ProductName         string    `json:"productName" validate:"required"`
-	Category            string    `json:"category" validate:"required"`
-	Price               float64   `json:"price" validate:"required"`
-	Weight              float64   `json:"weight" validate:"required"`
-	WeightUnit          string    `json:"weightUnit" validate:"required"` // e.g., "gm", "kg", "ml", "l"
-	Vegetarian          bool      `json:"vegetarian"`
-	Image               string    `json:"imageURL" validate:"required"`     // stored on bucket, req  - datatype - []string - to store image names in it as ref
-	Thumbnail           string    `json:"thumbnailURL" validate:"required"` // stored on bucket, req  - datatype - []string - to store image names in it as ref
-	Manufacturer        string    `json:"manufacturer" validate:"required"`
-	Brand               string    `json:"brand" validate:"required"`
-	ItemPackageQuantity int       `json:"itemPackageQuantity" validate:"required"`
-	PackageInformation  string    `json:"packageInformation" validate:"required"`
-	MfgDate             MonthYear `json:"mfgDate" validate:"required"`
-	ExpDate             MonthYear `json:"expDate" validate:"required"`
-	CountryOfOrigin     string    `json:"countryOfOrigin" validate:"required"`
+type ErrorResponse struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
 }
 
-type MonthYear struct {
-	Month time.Month
-	Year  int
-}
+const (
+	tokenSecret = "jdcklqnfioqwfnhipndklasxnesrtsrx"
+	// Replace with your actual secret key
+)
 
-// CHANGE THIS- not final one// make chnages at groceyItem field, It should show json fields on swagger
-// CreateEmployeeHandler creates a new employee.
+// CreateGroceryItem creates a new grocery item.
+
 // @Summary Create a new grocery item
-// @Description Creates a new grocery item and uploads its image to a storage bucket
+// @Description Creates a new grocery item and uploads its image to your database. Image is optional, you can add it later by using update method as well. Do provide 'Bearer' before adding authorization token
 // @ID create-grocery-item
-// @Accept  json
-// @Produce  json
-// @Param groceyItem body GroceryItem true "JSON data for the grocery item"
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "token"
+// @Param json-data formData string  true "JSON data for the grocery item" format(json) x-example({"name": "Example Item", "quantity": 10})
 // @Param image formData file false "Optional: Image file for the grocery item"
 // @Success 201 {string} string "Grocery item created successfully"
-// @Router /upload [post]
+// @Failure 400 {object} ErrorResponse "Bad Request"
+// @Failure 401 {object} ErrorResponse "Unauthorized"
+// @Failure 404 {object} ErrorResponse "Not Found"
+// @Failure 500 {object} ErrorResponse "Internal Server Error"
+// @Router /createGroceryItem [post]
+// @Securit BearerToken
 func CreateGroceryItem(w http.ResponseWriter, r *http.Request) {
 	// Handle CORS preflight request
 	if r.Method == http.MethodOptions {
@@ -67,6 +61,53 @@ func CreateGroceryItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.InitLogger()
+
+	// Extract the token from the request header
+	tokenString := ExtractToken(r)
+	if tokenString == "" {
+		respondWithError(w, http.StatusUnauthorized, "Token not provided")
+		return
+	}
+
+	// Parse the token
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return []byte(tokenSecret), nil
+	})
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Invalid token")
+		return
+	}
+
+	// Check if the token is valid and not expired
+	if !token.Valid {
+		respondWithError(w, http.StatusUnauthorized, "Invalid token")
+		return
+	}
+
+	// Check if the token is valid and not expired
+	// if !token.Valid {
+	// 	// Attempt to refresh the token
+	// 	refreshedToken, refreshErr := RefreshToken(tokenString)
+	// 	if refreshErr != nil {
+	// 		respondWithError(w, http.StatusUnauthorized, "Invalid token")
+	// 		return
+	// 	}
+
+	// 	// Update the response with the new token
+	// 	respondWithJSON(w, http.StatusOK, map[string]string{"message": "Token refreshed successfully", "newToken": refreshedToken})
+	// 	return
+	// }
+
+	// Create a Firestore client
+	client, err := utils.CreateFirestoreClient()
+	if err != nil {
+		log.Print("Failed to create Firestore client:", err)
+		respondWithError(w, http.StatusInternalServerError, "Failed to create Firestore client")
+		return
+	}
+	defer client.Close()
+
+	log.Print("Firestore client created")
 
 	// Parse the form data with a max of 10 MB limit for the entire request
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
@@ -103,20 +144,44 @@ func CreateGroceryItem(w http.ResponseWriter, r *http.Request) {
 	} else {
 		defer file.Close()
 
-		// Read the first 512 bytes to detect the content type
-		buffer := make([]byte, 512)
-		_, err := file.Read(buffer)
-		if err != nil {
-			log.Println("Failed to read file content:", err)
-			respondWithError(w, http.StatusBadRequest, "Failed to read file content")
+		// Reset the file pointer to the beginning
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			log.Println("Failed to reset file pointer:", err)
+			respondWithError(w, http.StatusInternalServerError, "Failed to reset file pointer")
 			return
 		}
 
-		// Check if the content type is image based on the detected content
-		contentType := http.DetectContentType(buffer)
-		if !strings.HasPrefix(contentType, "image/") {
-			log.Println("Invalid file type. Only images are allowed.")
-			respondWithError(w, http.StatusBadRequest, "Invalid file type. Only images are allowed.")
+		// // Read the first 512 bytes to detect the content type
+		// buffer := make([]byte, 512)
+		// _, err := file.Read(buffer)
+		// if err != nil {
+		// 	log.Println("Failed to read file content:", err)
+		// 	respondWithError(w, http.StatusBadRequest, "Failed to read file content")
+		// 	return
+		// }
+
+		// // Check if the content type is image based on the detected content
+		// contentType := http.DetectContentType(buffer)
+		// if !strings.HasPrefix(contentType, "image/") {
+		// 	log.Println("Invalid file type. Only images are allowed.")
+		// 	respondWithError(w, http.StatusBadRequest, "Invalid file type. Only images are allowed.")
+		// 	return
+		// }
+
+		// Calculate SHA-256 hash of the image data
+		imageHash, err := CalculateImageHash(file)
+		if err != nil {
+			log.Println("Failed to calculate image hash:", err)
+			respondWithError(w, http.StatusInternalServerError, "Failed to calculate image hash")
+			return
+		}
+
+		log.Println("Image hash calculated successfully:", imageHash)
+
+		// Check if an item with the same hash already exists
+		if IsDuplicateImage(imageHash) {
+			log.Println("Duplicate image detected")
+			respondWithError(w, http.StatusBadRequest, "Duplicate image detected")
 			return
 		}
 
@@ -137,6 +202,7 @@ func CreateGroceryItem(w http.ResponseWriter, r *http.Request) {
 			// Set the image URL in the grocery item
 			groceryItem.Image = imageURL
 			groceryItem.Thumbnail = thumbnailURL
+			groceryItem.ImageHash = imageHash
 
 			// Signal that the image upload is complete
 			imageUploadDone <- true
@@ -152,17 +218,6 @@ func CreateGroceryItem(w http.ResponseWriter, r *http.Request) {
 		}
 
 	}
-
-	// Create a Firestore client
-	client, err := utils.CreateFirestoreClient()
-	if err != nil {
-		log.Print("Failed to create Firestore client:", err)
-		respondWithError(w, http.StatusInternalServerError, "Failed to create Firestore client")
-		return
-	}
-	defer client.Close()
-
-	log.Print("Firestore client created")
 
 	// Read existing grocery items from Firestore - collection : "groceryItems"
 	iter := client.Collection("groceryItems").Documents(context.Background())
@@ -309,7 +364,7 @@ func generateThumbnail(file io.Reader) (image.Image, error) {
 	log.Println("After decoding the image")
 
 	// Resize the image to create a thumbnail
-	thumbnail := resize.Thumbnail(100, 100, img, resize.Lanczos3)
+	thumbnail := resize.Thumbnail(500, 500, img, resize.Lanczos3)
 	if thumbnail == nil {
 		log.Println("Generated thumbnail is nil")
 		return nil, fmt.Errorf("generated thumbnail is nil")

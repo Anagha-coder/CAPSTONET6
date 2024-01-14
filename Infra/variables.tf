@@ -10,14 +10,19 @@ variable "gcp_region" {
     description = "GCP region"  
 }
 
-variable "databases" {
-  description = "List of databases to create"
-  type        = list(object({
-    name         = string
-    location  = string
-    type         = string
-  }))
+variable "service_account_email" {
+  description = "service account email"
+  
 }
+
+# variable "databases" {
+#   description = "List of databases to create"
+#   type        = list(object({
+#     name         = string
+#     location  = string
+#     type         = string
+#   }))
+# }
 
 variable "buckets" {
   description = "Bucket to store images of grocery items"
@@ -27,3 +32,4 @@ variable "buckets" {
   }))
   
 }
+

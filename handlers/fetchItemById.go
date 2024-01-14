@@ -11,6 +11,17 @@ import (
 	"example.com/capstone/utils"
 )
 
+// FetchItemByID fetches a grocery item by its ID.
+// @Summary Fetch a grocery item by ID
+// @Description Fetches a grocery item from the Firestore database based on the provided ID.
+// @ID fetch-item-by-id
+// @Produce json
+// @Param id path integer true "ID of the grocery item" format(int64) minimum(1)
+// @Success 200 {object} GroceryItem "Grocery item fetched successfully"
+// @Failure 400 {object} ErrorResponse "Bad Request"
+// @Failure 404 {object} ErrorResponse "Not Found"
+// @Failure 500 {object} ErrorResponse "Internal Server Error"
+// @Router /fetchGroceryItemByID/{id} [get]
 func FetchItemByID(w http.ResponseWriter, r *http.Request) {
 	// handle preflight CORS
 	if r.Method == http.MethodOptions {
@@ -59,7 +70,7 @@ func FetchItemByID(w http.ResponseWriter, r *http.Request) {
 	doc, err := iter.Next()
 	if err != nil {
 		log.Print("GroceryItem not found:", err)
-		respondWithError(w, http.StatusBadRequest, "GroceryItem not found")
+		respondWithError(w, http.StatusBadRequest, "GroceryItem not found, maybe it does not exist")
 		return
 	}
 
@@ -75,7 +86,4 @@ func FetchItemByID(w http.ResponseWriter, r *http.Request) {
 
 }
 
-// may be go routine to return image and thumbnail - async
-// may be create a different struct just to return - items you want to display and exclude that you don't want
-// firestore - img - just img url - no access rn
-// cloudstorage - imges - stored
+// may be go routine to return image and thumbnail - async - no need
